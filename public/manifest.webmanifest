@@ -1,0 +1,9 @@
+{
+  "name": "맞춤형 AI 아바타 영상통화",
+  "short_name": "AI 영상통화",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f3ed",
+  "theme_color": "#f6f3ed",
+  "icons": []
+}

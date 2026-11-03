@@ -1,0 +1,22 @@
+{
+  "name": "avatar-call-ver1",
+  "version": "1.0.0",
+  "private": true,
+  "description": "노년층 맞춤형 AI 아바타 영상통화 앱 설계도 VER.1 구현",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@livekit/agents": "^1.9.2",
+    "@livekit/agents-plugin-elevenlabs": "^1.9.2",
+    "@livekit/agents-plugin-lemonslice": "^1.9.2",
+    "livekit-client": "^2.22.4",
+    "livekit-server-sdk": "^2.19.1",
+    "sharp": "^0.35.5"
+  },
+  "overrides": {
+    "@livekit/agents": {
+      "sharp": "0.35.5"
+    }
+  }
+}

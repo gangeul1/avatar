@@ -1,0 +1,9 @@
+.env
+.env.*
+node_modules/
+data/
+avatar-test.jpg
+avatar-test.png
+*.m4a
+*.log
+.venv/
