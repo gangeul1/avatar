@@ -91,10 +91,7 @@ if (missing.length) {
   console.error('필요한 .env 설정이 없습니다:', missing.join(', '));
   process.exit(1);
 }
-if (!fs.existsSync(imagePath)) {
-  console.error('프로젝트 폴더에 avatar-test.jpg 파일이 없습니다.');
-  process.exit(1);
-}
+
 const serverUrl = process.env.LIVEKIT_URL;
 if (!/^wss:\/\/[^/\s]+\.livekit\.cloud\/?$/.test(serverUrl)) {
   console.error('LIVEKIT_URL 형식이 올바르지 않습니다. 중복 wss:// 등을 확인하세요.');

@@ -4,12 +4,13 @@
   "private": true,
   "description": "노년층 맞춤형 AI 아바타 영상통화 앱 설계도 VER.1 구현",
   "scripts": {
-    "start": "node server.js"
+    "start": "concurrently --kill-others-on-fail \"node server.js\" \"node avatar-agent.mjs start\""
   },
   "dependencies": {
     "@livekit/agents": "^1.9.2",
     "@livekit/agents-plugin-elevenlabs": "^1.9.2",
     "@livekit/agents-plugin-lemonslice": "^1.9.2",
+    "concurrently": "^10.0.6",
     "livekit-client": "^2.22.4",
     "livekit-server-sdk": "^2.19.1",
     "sharp": "^0.35.5"
