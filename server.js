@@ -60,6 +60,14 @@ function isLivekitConfigured() {
 }
 
 function safeLivekitRequest(req) {
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
+
+  if (
+    railwayDomain &&
+    req.headers.origin === `https://${railwayDomain}`
+  ) {
+    return true;
+  }
   // Development server: accept only direct local/private-network clients.
   // Do NOT expose the HTTP server to the public internet without authentication.
   const remote = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
