@@ -1084,6 +1084,19 @@ async function startCall(target) {
 
     room = new lk.Room({ adaptiveStream: true, autoSubscribe: true });
     activeRoom = room;
+    room.on(lk.RoomEvent.LocalTrackPublished, publication => {
+      if (generation !== callGeneration) return;
+      if (publication?.kind === lk.Track.Kind.Audio) {
+        console.info('[MIC][LOCAL_TRACK_PUBLISHED]', publication.source);
+      }
+    });
+    room.on(lk.RoomEvent.LocalTrackUnpublished, publication => {
+      if (generation !== callGeneration) return;
+      if (publication?.kind === lk.Track.Kind.Audio) {
+        console.warn('[MIC][LOCAL_TRACK_UNPUBLISHED]', publication.source);
+        callMessage('마이크 연결이 해제됐습니다. 마이크 버튼을 확인해 주세요.', '마이크 끊김');
+      }
+    });
     room.on(lk.RoomEvent.TrackSubscribed, track => {
       if (generation !== callGeneration) return;
       if (track.kind === lk.Track.Kind.Video || track.kind === lk.Track.Kind.Audio) {
@@ -1125,9 +1138,19 @@ async function startCall(target) {
       );
     }, 18000);
 
-    try { await room.startAudio(); } catch (_) {}
+    // Publish microphone FIRST. Audio playback unlocking is independent and
+    // should never block capture/publishing if the browser rejects autoplay.
     try {
-      await room.localParticipant.setMicrophoneEnabled(true);
+      const micPub = await room.localParticipant.setMicrophoneEnabled(true);
+      if (!micPub || micPub.kind !== lk.Track.Kind.Audio) {
+        throw new Error('마이크 오디오 트랙이 LiveKit에 게시되지 않았습니다.');
+      }
+      console.info('[MIC][PUBLISHED]', {
+        source: micPub.source,
+        muted: micPub.isMuted,
+        hasTrack: !!micPub.track,
+        trackState: micPub.track?.mediaStreamTrack?.readyState || 'unknown',
+      });
       micEnabled = true;
       $('#talkBtn').classList.add('listening');
       $('#talkBtn').setAttribute('aria-label', '마이크 끄기');
@@ -1137,10 +1160,13 @@ async function startCall(target) {
         callMessage('아바타 영상이 나타나면 편하게 말씀해 주세요.', '마이크 켜짐');
       }
     } catch (e) {
+      console.error('[MIC][ERROR] microphone publishing failed:', e);
       micEnabled = false;
       $('#talkBtn').textContent = '🔇';
-      callMessage('마이크 권한을 허용해 주세요. 버튼을 누르면 다시 시도합니다.', '마이크 꺼짐');
+      callMessage('마이크가 서버에 연결되지 않았습니다. 브라우저 마이크 권한과 장치를 확인해 주세요.', '마이크 연결 오류');
     }
+    // Do not await playback unlock: this must not prevent mic publishing.
+    room.startAudio().catch(err => console.warn('[AUDIO][PLAYBACK]', err?.message || String(err)));
     $('#talkBtn').disabled = false;
   } catch (e) {
     console.error('LIVEKIT CALL ERROR:', e);
