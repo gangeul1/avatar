@@ -136,6 +136,10 @@ export default defineAgent({
     session.on('agent_state_changed', (ev) => {
       console.log('[VOICE][STATE]', ev?.oldState || '?', '->', ev?.newState || '?');
     });
+    session.on('user_state_changed', (ev) => {
+      // Log only state transitions, never the user's speech content.
+      console.log('[VOICE][USER]', ev?.oldState || '?', '->', ev?.newState || '?');
+    });
     session.on('user_transcription_timeout', () => {
       console.warn('[VOICE][STT] 사용자의 발화는 감지됐지만 텍스트 변환이 지연됨');
     });
@@ -145,16 +149,9 @@ export default defineAgent({
     });
     session.on('close', () => console.log('[VOICE][CLOSE] 세션 종료'));
 
-    console.log('[VOICE][START] 음성 세션 준비 중');
-    await session.start({
-      agent,
-      room: ctx.room,
-      outputOptions: { syncTranscription: false },
-    });
-    console.log('[VOICE][READY] 음성 세션 시작됨');
-
-    // An avatar service quota/key error used to prevent even the first greeting.
-    // Keep the voice conversation alive if the visual avatar fails to start.
+    // Start the avatar BEFORE the voice session. LiveKit recommends this order;
+    // starting the avatar afterward can replace an already active audio output.
+    let avatarStarted = false;
     try {
       const avatar = new AvatarSession({
         ...imageForTarget(target),
@@ -164,10 +161,19 @@ export default defineAgent({
         idleTimeout: 180,
       });
       await avatar.start(session, ctx.room);
-      console.log('[AVATAR][READY] LemonSlice 연결 완료');
+      avatarStarted = true;
+      console.log('[AVATAR][READY] LemonSlice 연결 완료 (음성 세션 시작 전)');
     } catch (err) {
-      console.error('[AVATAR][ERROR] 영상 아바타 연결 실패; 음성 대화는 계속 시도:', err?.message || String(err));
+      console.error('[AVATAR][ERROR] 영상 연결 실패; 음성만으로 진행:', err?.message || String(err));
     }
+
+    console.log('[VOICE][START] 음성 세션 준비 중; avatarStarted:', avatarStarted);
+    await session.start({
+      agent,
+      room: ctx.room,
+      outputOptions: { syncTranscription: false },
+    });
+    console.log('[VOICE][READY] 음성 세션 시작됨');
 
     try {
       // Keep the welcome line short to make first-time testing cheaper.
