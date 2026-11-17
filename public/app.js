@@ -978,6 +978,13 @@ function applyEmotion(
 let activeRoom = null;
 let callGeneration = 0;
 let micEnabled = false;
+let remoteTrackReceived = false;
+let connectionWatchdog = null;
+
+function stopConnectionWatchdog() {
+  if (connectionWatchdog !== null) clearTimeout(connectionWatchdog);
+  connectionWatchdog = null;
+}
 
 function callMessage(message, state = '') {
   $('#caption').textContent = message;
@@ -1000,6 +1007,8 @@ async function disconnectLivekit() {
   const old = activeRoom;
   activeRoom = null;
   micEnabled = false;
+  remoteTrackReceived = false;
+  stopConnectionWatchdog();
   const mic = $('#talkBtn');
   mic.classList.remove('listening');
   mic.textContent = '🎙️';
@@ -1013,6 +1022,8 @@ async function disconnectLivekit() {
 function displayRemoteTrack(track) {
   const lk = window.LivekitClient;
   if (!lk) return;
+  remoteTrackReceived = true;
+  stopConnectionWatchdog();
   if (track.kind === lk.Track.Kind.Video) {
     const el = track.attach();
     el.className = 'remoteLivekitVideo';
@@ -1044,6 +1055,7 @@ async function startCall(target) {
   await disconnectLivekit();
   if (generation !== callGeneration) return;
 
+  remoteTrackReceived = false;
   currentTarget = target;
   $('#callName').textContent = target.name;
   $('#callPhoto').src = target.photo || '';
@@ -1088,6 +1100,7 @@ async function startCall(target) {
     });
     room.on(lk.RoomEvent.Disconnected, () => {
       if (generation !== callGeneration || activeRoom !== room) return;
+      stopConnectionWatchdog();
       activeRoom = null;
       micEnabled = false;
       $('#talkBtn').disabled = false;
@@ -1099,6 +1112,18 @@ async function startCall(target) {
     await room.connect(connection.server_url, connection.participant_token);
     if (generation !== callGeneration) { await room.disconnect(); return; }
     callMessage('AI 아바타 영상과 음성을 준비하고 있어요…', '영상 준비 중');
+
+    // Joining a LiveKit room alone does not mean an AI worker joined it.
+    // Surface a useful diagnostic instead of leaving the user at 'mic on'.
+    connectionWatchdog = setTimeout(() => {
+      connectionWatchdog = null;
+      if (generation !== callGeneration || activeRoom !== room || remoteTrackReceived) return;
+      console.warn('[VOICE] 18초 동안 AI 음성/영상 트랙을 받지 못함. Railway 에이전트 로그 확인 필요.');
+      callMessage(
+        '마이크는 연결됐지만 AI 음성·영상이 아직 도착하지 않았어요. Railway에서 avatar-agent 실행 로그를 확인해 주세요.',
+        'AI 연결 지연'
+      );
+    }, 18000);
 
     try { await room.startAudio(); } catch (_) {}
     try {
@@ -1119,6 +1144,7 @@ async function startCall(target) {
     $('#talkBtn').disabled = false;
   } catch (e) {
     console.error('LIVEKIT CALL ERROR:', e);
+    stopConnectionWatchdog();
     if (room) { try { await room.disconnect(); } catch (_) {} }
     if (generation !== callGeneration) return;
     activeRoom = null;
