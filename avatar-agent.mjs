@@ -124,7 +124,7 @@ export default defineAgent({
       stt: new inference.STT({ model: 'deepgram/nova-3', language: 'ko' }),
       // Detect the case where speech is heard but no final transcript arrives.
       transcriptionTimeout: 5000,
-      llm: new inference.LLM({ model: 'openai/gpt-4.1-mini' }),
+      llm: new inference.LLM({ model: 'openai/gpt-6-luna' }),
       tts: new elevenlabs.TTS({
         apiKey: process.env.ELEVENLABS_API_KEY,
         voiceId: process.env.ELEVENLABS_VOICE_ID,
