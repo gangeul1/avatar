@@ -116,7 +116,14 @@ export default defineAgent({
     const session = new voice.AgentSession({
       // Korean STT. The VAD mode below determines when the user has finished
       // speaking; it does not depend on the STT provider's end-of-turn events.
-      stt: new inference.STT({ model: 'deepgram/nova-2', language: 'ko' }),
+      // Explicitly supply a VAD model because turnDetection: 'vad' requires one.
+      // Without an explicitly supplied model the bundled default can be treated
+      // as absent by turn-handling logic.
+      vad: new inference.VAD({ model: 'silero' }),
+      // Nova-3 supports Korean. Change only the speech recognition model.
+      stt: new inference.STT({ model: 'deepgram/nova-3', language: 'ko' }),
+      // Detect the case where speech is heard but no final transcript arrives.
+      transcriptionTimeout: 5000,
       llm: new inference.LLM({ model: 'openai/gpt-4.1-mini' }),
       tts: new elevenlabs.TTS({
         apiKey: process.env.ELEVENLABS_API_KEY,
@@ -131,7 +138,9 @@ export default defineAgent({
     // Do not log transcripts, names or memories: these can be highly personal.
     // Each stage is logged separately, making silent failures diagnosable.
     session.on('user_input_transcribed', (ev) => {
-      if (ev?.isFinal) console.log('[VOICE][STT] 최종 음성인식 완료');
+      // Never log the user's actual transcript. Record only whether STT responds.
+      if (ev?.isFinal) console.log('[VOICE][STT] FINAL_OK');
+      else console.log('[VOICE][STT] PARTIAL_OK');
     });
     session.on('agent_state_changed', (ev) => {
       console.log('[VOICE][STATE]', ev?.oldState || '?', '->', ev?.newState || '?');
@@ -140,8 +149,8 @@ export default defineAgent({
       // Log only state transitions, never the user's speech content.
       console.log('[VOICE][USER]', ev?.oldState || '?', '->', ev?.newState || '?');
     });
-    session.on('user_transcription_timeout', () => {
-      console.warn('[VOICE][STT] 사용자의 발화는 감지됐지만 텍스트 변환이 지연됨');
+    session.on('user_transcription_timeout', (ev) => {
+      console.warn('[VOICE][STT][TIMEOUT] 음성 감지 후 최종 텍스트 없음; 지속시간(ms):', Math.round(ev?.speechDuration || 0));
     });
     session.on('error', (ev) => {
       const err = ev?.error || ev;
