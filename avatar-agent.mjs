@@ -93,8 +93,11 @@ if (missing.length) {
 }
 
 const serverUrl = process.env.LIVEKIT_URL;
-if (!/^wss:\/\/[^/\s]+\.livekit\.cloud\/?$/.test(serverUrl)) {
-  console.error('LIVEKIT_URL 형식이 올바르지 않습니다. 중복 wss:// 등을 확인하세요.');
+try {
+  const u = new URL(serverUrl);
+  if (u.protocol !== 'wss:' || !u.hostname) throw new Error('Invalid WebSocket URL');
+} catch {
+  console.error('[AGENT][CONFIG] LIVEKIT_URL은 wss://로 시작하는 유효한 주소여야 합니다.');
   process.exit(1);
 }
 
@@ -106,44 +109,92 @@ export default defineAgent({
 
     // The selected target is resolved from data/targets.json on the local server.
     // No face image or personal memories are placed into the browser token.
+    console.log('[AGENT][ROOM] 작업 시작:', ctx.room.name.replace(/target-\d{10,20}-/, 'target-***-'));
     const target = profileForRoom(ctx.room.name);
     const agent = new voice.Agent({ instructions: instructionsFor(target) });
 
     const session = new voice.AgentSession({
-      // nova-2 supports Korean, unlike nova-3's language-specific set.
-      stt: new inference.STT({ model: 'deepgram/nova-2', language: 'ko' }),
+      // Korean STT. The VAD mode below determines when the user has finished
+      // speaking; it does not depend on the STT provider's end-of-turn events.
+      // Explicitly supply a VAD model because turnDetection: 'vad' requires one.
+      // Without an explicitly supplied model the bundled default can be treated
+      // as absent by turn-handling logic.
+      vad: new inference.VAD({ model: 'silero' }),
+      // Nova-3 supports Korean. Change only the speech recognition model.
+      stt: new inference.STT({ model: 'deepgram/nova-3', language: 'ko' }),
+      // Detect the case where speech is heard but no final transcript arrives.
+      transcriptionTimeout: 5000,
       llm: new inference.LLM({ model: 'openai/gpt-4.1-mini' }),
       tts: new elevenlabs.TTS({
         apiKey: process.env.ELEVENLABS_API_KEY,
         voiceId: process.env.ELEVENLABS_VOICE_ID,
         model: 'eleven_multilingual_v2',
       }),
-      turnHandling: { turnDetection: 'stt' },
+      // Nova-2 STT may produce a transcription without a timely STT-endpoint
+      // event. Using voice activity detection avoids a permanently open turn.
+      turnHandling: { turnDetection: 'vad' },
     });
 
+    // Do not log transcripts, names or memories: these can be highly personal.
+    // Each stage is logged separately, making silent failures diagnosable.
+    session.on('user_input_transcribed', (ev) => {
+      // Never log the user's actual transcript. Record only whether STT responds.
+      if (ev?.isFinal) console.log('[VOICE][STT] FINAL_OK');
+      else console.log('[VOICE][STT] PARTIAL_OK');
+    });
+    session.on('agent_state_changed', (ev) => {
+      console.log('[VOICE][STATE]', ev?.oldState || '?', '->', ev?.newState || '?');
+    });
+    session.on('user_state_changed', (ev) => {
+      // Log only state transitions, never the user's speech content.
+      console.log('[VOICE][USER]', ev?.oldState || '?', '->', ev?.newState || '?');
+    });
+    session.on('user_transcription_timeout', (ev) => {
+      console.warn('[VOICE][STT][TIMEOUT] 음성 감지 후 최종 텍스트 없음; 지속시간(ms):', Math.round(ev?.speechDuration || 0));
+    });
+    session.on('error', (ev) => {
+      const err = ev?.error || ev;
+      console.error('[VOICE][ERROR]', err?.name || 'error', err?.message || String(err));
+    });
+    session.on('close', () => console.log('[VOICE][CLOSE] 세션 종료'));
+
+    // Start the avatar BEFORE the voice session. LiveKit recommends this order;
+    // starting the avatar afterward can replace an already active audio output.
+    let avatarStarted = false;
+    try {
+      const avatar = new AvatarSession({
+        ...imageForTarget(target),
+        agentPrompt:
+          'Respond with lifelike, subtle facial expressions matching the emotion of the conversation. Smile gently when appropriate; use natural eye contact and small head movements.',
+        agentIdlePrompt: 'Listen attentively, blink naturally and make subtle, relaxed movements.',
+        idleTimeout: 180,
+      });
+      await avatar.start(session, ctx.room);
+      avatarStarted = true;
+      console.log('[AVATAR][READY] LemonSlice 연결 완료 (음성 세션 시작 전)');
+    } catch (err) {
+      console.error('[AVATAR][ERROR] 영상 연결 실패; 음성만으로 진행:', err?.message || String(err));
+    }
+
+    console.log('[VOICE][START] 음성 세션 준비 중; avatarStarted:', avatarStarted);
     await session.start({
       agent,
       room: ctx.room,
       outputOptions: { syncTranscription: false },
     });
+    console.log('[VOICE][READY] 음성 세션 시작됨');
 
-    const avatar = new AvatarSession({
-      ...imageForTarget(target),
-      agentPrompt:
-        'Respond with lifelike, subtle facial expressions matching the emotion of the conversation. Smile gently when appropriate; use natural eye contact and small head movements.',
-      agentIdlePrompt: 'Listen attentively, blink naturally and make subtle, relaxed movements.',
-      idleTimeout: 180,
-    });
-
-    await avatar.start(session, ctx.room);
-    console.log('LemonSlice 아바타 영상 연결 요청 완료.');
-
-    // Keep the welcome line short to make first-time testing cheaper.
-    session.generateReply({
-      instructions: target
-        ? `상대방에게 ${String(target.name || '아바타').slice(0, 40)}의 분위기로 짧고 자연스럽게 한국어로 인사해 주세요. 실제 본인인 척 사실을 지어내지는 마세요.`
-        : 'Greet the caller briefly in Korean in one short sentence.',
-    });
+    try {
+      // Keep the welcome line short to make first-time testing cheaper.
+      session.generateReply({
+        instructions: target
+          ? `상대방에게 ${String(target.name || '아바타').slice(0, 40)}의 분위기로 짧고 자연스럽게 한국어로 인사해 주세요. 실제 본인인 척 사실을 지어내지는 마세요.`
+          : 'Greet the caller briefly in Korean in one short sentence.',
+      });
+      console.log('[VOICE][GREETING] 첫 인사 생성 요청됨');
+    } catch (err) {
+      console.error('[VOICE][GREETING ERROR]', err?.message || String(err));
+    }
   },
 });
 

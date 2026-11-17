@@ -978,6 +978,13 @@ function applyEmotion(
 let activeRoom = null;
 let callGeneration = 0;
 let micEnabled = false;
+let remoteTrackReceived = false;
+let connectionWatchdog = null;
+
+function stopConnectionWatchdog() {
+  if (connectionWatchdog !== null) clearTimeout(connectionWatchdog);
+  connectionWatchdog = null;
+}
 
 function callMessage(message, state = '') {
   $('#caption').textContent = message;
@@ -1000,6 +1007,8 @@ async function disconnectLivekit() {
   const old = activeRoom;
   activeRoom = null;
   micEnabled = false;
+  remoteTrackReceived = false;
+  stopConnectionWatchdog();
   const mic = $('#talkBtn');
   mic.classList.remove('listening');
   mic.textContent = '🎙️';
@@ -1013,6 +1022,8 @@ async function disconnectLivekit() {
 function displayRemoteTrack(track) {
   const lk = window.LivekitClient;
   if (!lk) return;
+  remoteTrackReceived = true;
+  stopConnectionWatchdog();
   if (track.kind === lk.Track.Kind.Video) {
     const el = track.attach();
     el.className = 'remoteLivekitVideo';
@@ -1044,6 +1055,7 @@ async function startCall(target) {
   await disconnectLivekit();
   if (generation !== callGeneration) return;
 
+  remoteTrackReceived = false;
   currentTarget = target;
   $('#callName').textContent = target.name;
   $('#callPhoto').src = target.photo || '';
@@ -1072,6 +1084,19 @@ async function startCall(target) {
 
     room = new lk.Room({ adaptiveStream: true, autoSubscribe: true });
     activeRoom = room;
+    room.on(lk.RoomEvent.LocalTrackPublished, publication => {
+      if (generation !== callGeneration) return;
+      if (publication?.kind === lk.Track.Kind.Audio) {
+        console.info('[MIC][LOCAL_TRACK_PUBLISHED]', publication.source);
+      }
+    });
+    room.on(lk.RoomEvent.LocalTrackUnpublished, publication => {
+      if (generation !== callGeneration) return;
+      if (publication?.kind === lk.Track.Kind.Audio) {
+        console.warn('[MIC][LOCAL_TRACK_UNPUBLISHED]', publication.source);
+        callMessage('마이크 연결이 해제됐습니다. 마이크 버튼을 확인해 주세요.', '마이크 끊김');
+      }
+    });
     room.on(lk.RoomEvent.TrackSubscribed, track => {
       if (generation !== callGeneration) return;
       if (track.kind === lk.Track.Kind.Video || track.kind === lk.Track.Kind.Audio) {
@@ -1088,6 +1113,7 @@ async function startCall(target) {
     });
     room.on(lk.RoomEvent.Disconnected, () => {
       if (generation !== callGeneration || activeRoom !== room) return;
+      stopConnectionWatchdog();
       activeRoom = null;
       micEnabled = false;
       $('#talkBtn').disabled = false;
@@ -1100,9 +1126,31 @@ async function startCall(target) {
     if (generation !== callGeneration) { await room.disconnect(); return; }
     callMessage('AI 아바타 영상과 음성을 준비하고 있어요…', '영상 준비 중');
 
-    try { await room.startAudio(); } catch (_) {}
+    // Joining a LiveKit room alone does not mean an AI worker joined it.
+    // Surface a useful diagnostic instead of leaving the user at 'mic on'.
+    connectionWatchdog = setTimeout(() => {
+      connectionWatchdog = null;
+      if (generation !== callGeneration || activeRoom !== room || remoteTrackReceived) return;
+      console.warn('[VOICE] 18초 동안 AI 음성/영상 트랙을 받지 못함. Railway 에이전트 로그 확인 필요.');
+      callMessage(
+        '마이크는 연결됐지만 AI 음성·영상이 아직 도착하지 않았어요. Railway에서 avatar-agent 실행 로그를 확인해 주세요.',
+        'AI 연결 지연'
+      );
+    }, 18000);
+
+    // Publish microphone FIRST. Audio playback unlocking is independent and
+    // should never block capture/publishing if the browser rejects autoplay.
     try {
-      await room.localParticipant.setMicrophoneEnabled(true);
+      const micPub = await room.localParticipant.setMicrophoneEnabled(true);
+      if (!micPub || micPub.kind !== lk.Track.Kind.Audio) {
+        throw new Error('마이크 오디오 트랙이 LiveKit에 게시되지 않았습니다.');
+      }
+      console.info('[MIC][PUBLISHED]', {
+        source: micPub.source,
+        muted: micPub.isMuted,
+        hasTrack: !!micPub.track,
+        trackState: micPub.track?.mediaStreamTrack?.readyState || 'unknown',
+      });
       micEnabled = true;
       $('#talkBtn').classList.add('listening');
       $('#talkBtn').setAttribute('aria-label', '마이크 끄기');
@@ -1112,13 +1160,17 @@ async function startCall(target) {
         callMessage('아바타 영상이 나타나면 편하게 말씀해 주세요.', '마이크 켜짐');
       }
     } catch (e) {
+      console.error('[MIC][ERROR] microphone publishing failed:', e);
       micEnabled = false;
       $('#talkBtn').textContent = '🔇';
-      callMessage('마이크 권한을 허용해 주세요. 버튼을 누르면 다시 시도합니다.', '마이크 꺼짐');
+      callMessage('마이크가 서버에 연결되지 않았습니다. 브라우저 마이크 권한과 장치를 확인해 주세요.', '마이크 연결 오류');
     }
+    // Do not await playback unlock: this must not prevent mic publishing.
+    room.startAudio().catch(err => console.warn('[AUDIO][PLAYBACK]', err?.message || String(err)));
     $('#talkBtn').disabled = false;
   } catch (e) {
     console.error('LIVEKIT CALL ERROR:', e);
+    stopConnectionWatchdog();
     if (room) { try { await room.disconnect(); } catch (_) {} }
     if (generation !== callGeneration) return;
     activeRoom = null;

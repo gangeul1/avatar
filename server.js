@@ -723,7 +723,9 @@ const server =
           return json(res, 200, {
             configured: isLivekitConfigured(),
             lemonslice_key_present: Boolean(process.env.LEMONSLICE_API_KEY),
-            note: 'Video agent not started yet; this endpoint checks configuration only.'
+            elevenlabs_key_present: Boolean(process.env.ELEVENLABS_API_KEY),
+            elevenlabs_voice_present: Boolean(process.env.ELEVENLABS_VOICE_ID),
+            note: 'Configuration only. A configured service does not guarantee that the AI worker is running.'
           });
         }
 
