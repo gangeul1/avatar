@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#f7f4ee" />
-  <title>AI Avatar · 영상통화</title>
+  <title>AI Avatar</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <style>
     :root{
@@ -164,6 +164,9 @@
 <body>
 <div class="app">
   <section id="home" class="screen active home">
+    <button class="createCorner" id="createBtn" type="button" aria-label="대상 만들기">
+      <span class="plus" aria-hidden="true">+</span> 대상 만들기
+    </button>
     <button class="callOrb" id="startCallBtn" type="button" aria-label="영상통화 시작" title="영상통화 시작">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.34 1.9.66 2.81a2 2 0 0 1-.45 2.11L8.05 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.32 1.85.54 2.81.66A2 2 0 0 1 22 16.92z"/>
@@ -178,6 +181,65 @@
     <div id="targetList" class="targetList"></div>
   </section>
 
+  <section id="create1" class="screen">
+    <div class="top"><button class="back" data-go="home">‹</button><span class="step">1 / 4</span><span></span></div>
+    <h2>사진 또는 외형을<br>선택해주세요.</h2>
+    <div class="panel">
+      <label class="photoBox" for="photoInput">
+        <img id="photoPreview" alt="대상 사진 미리보기" />
+        <div id="photoPrompt" class="photoPrompt"><b>사진 선택</b>휴대폰에 있는 사진을 선택하세요.</div>
+      </label>
+      <input id="photoInput" class="fileInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" />
+      <p class="hint">JPG·PNG·WebP 사진을 사용해 주세요. 실시간 통화 시 사진은 LemonSlice로 전송됩니다. 본인 또는 사용 허락을 받은 인물의 사진만 등록해 주세요.</p>
+      <label class="label" for="nameInput" style="margin-top:20px">대상 이름</label>
+      <input id="nameInput" class="field" placeholder="예: 어머니" autocomplete="off" />
+    </div>
+    <button class="primary" id="toCreate2">다음</button>
+  </section>
+
+  <section id="create2" class="screen">
+    <div class="top"><button class="back" data-go="create1">‹</button><span class="step">2 / 4</span><span></span></div>
+    <h2>목소리를<br>선택해주세요.</h2>
+    <p class="sub" style="font-size:16px">현재 실시간 영상통화에는 설정된 복제 목소리 한 개가 모든 대상에 공통 적용됩니다. 아래 선택은 추후 개별 음성 설정을 위해 저장됩니다.</p>
+    <div id="voiceChoices" class="choices">
+      <button class="choice selected" data-voice="부드러운 목소리">● 부드러운 목소리</button>
+      <button class="choice" data-voice="차분한 목소리">● 차분한 목소리</button>
+      <button class="choice" data-voice="활기찬 목소리">● 활기찬 목소리</button>
+    </div>
+    <button class="primary" id="toCreate3">다음</button>
+  </section>
+
+  <section id="create3" class="screen">
+    <div class="top"><button class="back" data-go="create2">‹</button><span class="step">3 / 4</span><span></span></div>
+    <h2>관계와 성격을<br>알려주세요.</h2>
+    <div class="relations" id="relationChoices">
+      <button class="relation" data-rel="어머니">어머니</button><button class="relation" data-rel="아버지">아버지</button>
+      <button class="relation" data-rel="배우자">배우자</button><button class="relation" data-rel="친구">친구</button>
+      <button class="relation" data-rel="자녀">자녀</button><button class="relation" data-rel="기타">기타</button>
+    </div>
+    <label class="label" for="personalityInput">성격</label>
+    <textarea id="personalityInput" class="field" placeholder="예: 따뜻하고 다정하며, 농담을 자주 해요."></textarea>
+    <button class="primary" id="toCreate4">다음</button>
+  </section>
+
+  <section id="create4" class="screen">
+    <div class="top"><button class="back" data-go="create3">‹</button><span class="step">4 / 4</span><span></span></div>
+    <h2>기억해줬으면 하는<br>이야기를 들려주세요.</h2>
+    <p class="sub">말로 이야기해도 됩니다.</p>
+    <div class="panel">
+      <textarea id="memoryInput" class="field" placeholder="예: 젊었을 때 함께 제주도 여행을 갔어요."></textarea>
+      <div class="microw"><button id="memoryMic" class="micbtn" aria-label="음성 입력">🎙️</button><button id="addMemory" class="secondary" style="margin:0">이 이야기 추가</button></div>
+      <div class="hint">여러 이야기를 추가할 수 있어요.</div>
+      <div id="memoryList" style="margin-top:14px"></div>
+    </div>
+    <button class="primary" id="saveTarget">대상 저장</button>
+  </section>
+
+  <section id="saved" class="screen">
+    <div class="saveMark">✓</div>
+    <div class="center"><h2>대상이 저장되었습니다.</h2><p class="sub">이제 영상통화를 시작할 수 있어요.</p></div>
+    <button class="primary" data-go="home" style="margin-top:34px">메인 화면으로 돌아가기</button>
+  </section>
 
   <section id="call" class="screen callScreen">
     <div class="callStage">
@@ -190,6 +252,6 @@
 </div>
 <div id="toast" class="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js" defer></script>
-<script src="/app.js?v=targetmanager-20261119-1" defer></script>
+<script src="/app.js?v=integrated-20261014-1" defer></script>
 </body>
 </html>
