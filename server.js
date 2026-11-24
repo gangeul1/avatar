@@ -886,6 +886,32 @@ const server =
           );
         }
 
+        // DELETE TARGET
+        if (
+          p.startsWith('/api/targets/') &&
+          req.method === 'DELETE'
+        ) {
+          let id;
+          try {
+            id = decodeURIComponent(p.split('/').pop());
+          } catch (_) {
+            return json(res, 400, { error: '잘못된 대상 ID입니다.' });
+          }
+          if (!/^\d{10,20}$/.test(id)) {
+            return json(res, 400, { error: '잘못된 대상 ID입니다.' });
+          }
+
+          const targets = getTargets();
+          const index = targets.findIndex(t => String(t.id) === id);
+          if (index < 0) {
+            return json(res, 404, { error: '대상을 찾을 수 없습니다.' });
+          }
+
+          targets.splice(index, 1);
+          saveTargets(targets);
+          return json(res, 200, { deleted: true, id });
+        }
+
         // CHAT
         if (
           p === '/api/chat' &&
